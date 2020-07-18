@@ -88,9 +88,9 @@ class VGG(nn.Module):
         self.cls_loc.weight.data.normal_(0, 0.01)
         self.cls_loc.bias.data.zero_()
 
+
         self.score = nn.Linear(4096, class_num+1)  # (VOC 20 classes + 1 background)
 
-        
     def rpn_loss(self, rpn_loc, rpn_score, gt_rpn_loc, gt_rpn_label, weight=10.0):
         # 对与classification我们使用Cross Entropy损失
         gt_rpn_label = torch.autograd.Variable(gt_rpn_label.long())

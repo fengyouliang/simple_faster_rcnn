@@ -27,7 +27,7 @@ def init_anchor(img_size=800, sub_sample=16):
     # print len(ctr)  # 将原图片分割成50*50=2500(feature_size*feature_size)个区域的中心点
 
     # 初始化：每个区域有9个anchors候选框，每个候选框的坐标(y1, x1, y2, x2)
-    anchors = np.zeros(((feature_size * feature_size * 9), 4))  # (22500, 4) 50*50*9
+    anchors = np.zeros(((feature_size * feature_size * 9), 4))  # (22500, 4)
     index = 0
     # 将候选框的坐标赋值到anchors
     for c in ctr:
@@ -37,10 +37,10 @@ def init_anchor(img_size=800, sub_sample=16):
                 # anchor_scales 是针对特征图的，所以需要乘以下采样"sub_sample"
                 h = sub_sample * anchor_scales[j] * np.sqrt(ratios[i])
                 w = sub_sample * anchor_scales[j] * np.sqrt(1. / ratios[i])
-                anchors[index, 0] = ctr_y - h / 2. # 左上Y
-                anchors[index, 1] = ctr_x - w / 2. # 左上X
-                anchors[index, 2] = ctr_y + h / 2. # 右下Y
-                anchors[index, 3] = ctr_x + w / 2. # 右下X
+                anchors[index, 0] = ctr_y - h / 2.
+                anchors[index, 1] = ctr_x - w / 2.
+                anchors[index, 2] = ctr_y + h / 2.
+                anchors[index, 3] = ctr_x + w / 2.
                 index += 1
 
     # 去除坐标出界的边框，保留图片内的框——图片内框
@@ -80,29 +80,12 @@ def compute_iou(valid_anchor_boxes, bbox):
             else:
                 iou = 0.
 
-            ious[num1, num2] = iou # 第num1个（有效）anchor和第num2个bounding box的IOU
+            ious[num1, num2] = iou
 
     return ious
 
 
 def get_pos_neg_sample(ious, valid_anchor_len, pos_iou_threshold=0.7,neg_iou_threshold=0.3, pos_ratio=0.5, n_sample=256):
-    
-    # 对每个bounding boxes找到有最大IOU的一个anchor，每个bounding box在所有的anchor中找，找出 #boxes 个
-    # # 再对每9个anchor（即一个特征点）找出有最大IOU的那个anchor（错误）
-    # 再对每个anchor找出有最大IOU的anchor #anchor
-    # 找出所有有最大IOU（第一步找出的#boxes个）的所有anchor
-    
-    # 初始化label（-1），用于寻找正负样例
-    # -1， 0， 1 = 不训练的样本，负例样本，正例样本
-    # 对所有小于一定阈值（0.3）的样本，label设为0
-    # 对所有大于一定阈值（0.7）的样本，label设为1
-    # random.choice，直到label =  1的样本数小于 # pos_ratio * n_sample（128）
-    # 再random.choice，直到label = -1的样本数为 # n_sample - pos_sample
-    # 即 pos + neg 为 n_sample(256)
-    # pos 不足，用neg 来填补
-    
-    
-    
     gt_argmax_ious = ious.argmax(axis=0)  # 找出每个目标实体框最大IOU的anchor框index，共2个, 与图片内目标框数量一致
     gt_max_ious = ious[gt_argmax_ious, np.arange(ious.shape[1])]  # 获取每个目标实体框最大IOU的值，与gt_argmax_ious对应, 共2个，与图片内目标框数量一致
     argmax_ious = ious.argmax(axis=1)  # 找出每个anchor框最大IOU的目标框index，共8940个, 每个anchor框都会对应一个最大IOU的目标框
@@ -137,12 +120,6 @@ def get_pos_neg_sample(ious, valid_anchor_len, pos_iou_threshold=0.7,neg_iou_thr
 
 
 def get_predict_bbox(anchors, pred_anchor_locs, objectness_score, n_train_pre_nms=12000, min_size=16):
-    """
-    给定anchors，RPN网络的loc和cls输出
-    利用 pred_anchor_locs 来对anchor进行修正
-    在利用 objectness_score 对anchor进行筛选
-    这样保证给后面的网络输入有 object 的 roi
-    """
     # 转换anchor格式从 y1, x1, y2, x2 到 ctr_x, ctr_y, h, w ：
     anc_height = anchors[:, 2] - anchors[:, 0]
     anc_width = anchors[:, 3] - anchors[:, 1]
@@ -191,16 +168,7 @@ def get_predict_bbox(anchors, pred_anchor_locs, objectness_score, n_train_pre_nm
 # torch.masked_select()
 
 def nms(roi, score, order, nms_thresh=0.7, n_train_post_nms=2000):
-    
-    """
-    经 get_predict_bbox() 函数输出的roi仅保证roi中是有物体的
-    但不一个物体可能会对应多个ROI
-    nms的作用就是为同一个物体的重叠ROI预测进行消除
-    利用score
-    """
-    
     # nms（非极大抑制）计算： (去除和极大值anchor框IOU大于0.7的框——即去除相交的框，保留score大，且基本无相交的框)
-    
     roi = roi[order, :]  # (12000, 4)
     score = score[order]
     y1 = roi[:, 0]
@@ -241,11 +209,10 @@ def nms(roi, score, order, nms_thresh=0.7, n_train_post_nms=2000):
 
 def get_propose_target(roi, bbox, labels, n_sample=128, pos_ratio=0.25,
                        pos_iou_thresh=0.5, neg_iou_thresh_hi=0.5, neg_iou_thresh_lo = 0.0):
-    # 该函数的 output 是 计算ROI LOSS 的 Y
     # Proposal targets
     # 找到每个ground-truth目标（真实目标框bbox）与region proposal（预测目标框roi）的iou
     ious = compute_iou(roi, bbox)
-    # print(ious.shape)  # (1758, 2) # 表明nms后还剩这么多框（ROI）
+    # print(ious.shape)  # (1758, 2)
 
     # 找到与每个region proposal具有较高IoU的ground truth，并且找到最大的IoU
     gt_assignment = ious.argmax(axis=1)
@@ -254,7 +221,6 @@ def get_propose_target(roi, bbox, labels, n_sample=128, pos_ratio=0.25,
     # print(max_iou)  # [0.17802152 0.17926688 0.04676317 ... 0.         0.         0.        ]
 
     # 为每个proposal分配标签：
-    # 将最大IOU对应的box的label作为其label
     gt_roi_label = labels[gt_assignment]
     # print(gt_roi_label)  # [6 6 8 ... 6 6 6]
 
